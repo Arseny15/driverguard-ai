@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriveGuard AI - Advanced Driver Monitoring System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #3b82f6 100%);
+        }
+        .dark-card {
+            background: linear-gradient(145deg, #1e293b 0%, #334155 100%);
+            border: 1px solid #475569;
+        }
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+        }
+        .alert-high {
+            border-left: 4px solid #ef4444;
+            background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 100%);
+        }
+        .alert-medium {
+            border-left: 4px solid #f59e0b;
+            background: linear-gradient(90deg, #92400e 0%, #b45309 100%);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-running {
+            background-color: #10b981;
+            animation: pulse 2s infinite;
+        }
+        .status-stopped {
+            background-color: #ef4444;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .ars-logo {
+            filter: brightness(0) invert(1);
+        }
+        .text-ars-blue {
+            color: #3b82f6;
+        }
+        .bg-ars-dark {
+            background-color: #0f172a;
+        }
+    </style>
+</head>
+<body class="bg-ars-dark min-h-screen text-white">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <img src="/static/ars-logo.svg" alt="ARS Logo" class="w-12 h-12 ars-logo">
+                    <div>
+                        <h1 class="text-3xl font-bold">DriveGuard AI</h1>
+                        <p class="text-sm text-blue-200">Advanced Driver Monitoring System</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        <span id="statusText">Stopped</span>
+                    </div>
+                    <button id="startBtn" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-play mr-2"></i>Start
+                    </button>
+                    <button id="stopBtn" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors" disabled>
+                        <i class="fas fa-stop mr-2"></i>Stop
+                    </button>
+                    <button id="logoutBtn" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Video Feed -->
+            <div class="lg:col-span-2">
+                <div class="dark-card rounded-xl shadow-lg card-hover">
+                    <div class="p-6 border-b border-gray-600">
+                        <h2 class="text-xl font-semibold text-white flex items-center">
+                            <i class="fas fa-video mr-3 text-ars-blue"></i>
+                            Live Video Feed
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <div class="relative bg-gray-900 rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
+                            <img id="videoFeed" src="" alt="Video Feed" class="w-full h-full object-cover">
+                            <div id="noVideoMessage" class="absolute inset-0 flex items-center justify-center text-white">
+                                <div class="text-center">
+                                    <i class="fas fa-video-slash text-6xl mb-4 opacity-50"></i>
+                                    <p class="text-xl">No video feed available</p>
+                                    <p class="text-sm opacity-75">Click Start to begin monitoring</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="space-y-6">
+                <!-- Stats Cards -->
+                <div class="dark-card rounded-xl shadow-lg card-hover">
+                    <div class="p-6 border-b border-gray-600">
+                        <h3 class="text-lg font-semibold text-white flex items-center">
+                            <i class="fas fa-chart-bar mr-3 text-green-500"></i>
+                            Statistics
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Total Frames</span>
+                            <div class="flex items-center space-x-3">
+                                <span id="totalFrames" class="font-bold text-ars-blue">0</span>
+                                <div class="w-12 h-12 relative">
+                                    <svg class="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                                        <path class="text-gray-600" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path id="totalFramesCircle" class="text-ars-blue" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="100, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <span id="totalFramesPercent" class="text-xs font-bold text-ars-blue" style="font-size: 0.6rem;">100%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Drowsiness Detected</span>
+                            <div class="flex items-center space-x-3">
+                                <span id="drowsinessCount" class="font-bold text-red-400">0</span>
+                                <div class="w-12 h-12 relative">
+                                    <svg class="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                                        <path class="text-gray-600" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path id="drowsinessCircle" class="text-red-400" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <span id="drowsinessPercent" class="text-xs font-bold text-red-400" style="font-size: 0.6rem;">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Attention Lost</span>
+                            <div class="flex items-center space-x-3">
+                                <span id="attentionCount" class="font-bold text-orange-400">0</span>
+                                <div class="w-12 h-12 relative">
+                                    <svg class="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                                        <path class="text-gray-600" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path id="attentionCircle" class="text-orange-400" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <span id="attentionPercent" class="text-xs font-bold text-orange-400" style="font-size: 0.6rem;">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Phone Usage</span>
+                            <div class="flex items-center space-x-3">
+                                <span id="phoneCount" class="font-bold text-purple-400">0</span>
+                                <div class="w-12 h-12 relative">
+                                    <svg class="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                                        <path class="text-gray-600" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path id="phoneCircle" class="text-purple-400" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center">
+                                        <span id="phonePercent" class="text-xs font-bold text-purple-400" style="font-size: 0.6rem;">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Session Duration</span>
+                            <span id="sessionDuration" class="font-bold text-gray-300">00:00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuration Panel -->
+                <div class="dark-card rounded-xl shadow-lg card-hover">
+                    <div class="p-6 border-b border-gray-600">
+                        <h3 class="text-lg font-semibold text-white flex items-center">
+                            <i class="fas fa-cog mr-3 text-ars-blue"></i>
+                            Configuration
+                        </h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Eye AR Threshold</label>
+                            <input type="range" id="eyeArThreshold" min="0.1" max="0.5" step="0.01" value="0.33" 
+                                   class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                <span>0.1</span>
+                                <span id="eyeArValue">0.33</span>
+                                <span>0.5</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2">
+                                <strong>How it works:</strong> Eye Aspect Ratio (EAR) measures eye openness. 
+                                Lower values (0.1-0.2) = eyes closed, Higher values (0.3-0.5) = eyes open. 
+                                When EAR drops below this threshold for 3+ seconds, drowsiness is detected.
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Mouth AR Threshold</label>
+                            <input type="range" id="mouthArThreshold" min="0.3" max="1.0" step="0.01" value="0.7" 
+                                   class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                <span>0.3</span>
+                                <span id="mouthArValue">0.7</span>
+                                <span>1.0</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Detection Mode</label>
+                            <select id="detectionMode" class="w-full p-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-ars-blue focus:border-transparent">
+                                <option value="2d_sparse">2D Sparse</option>
+                                <option value="2d_dense">2D Dense</option>
+                                <option value="3d">3D Reconstruction</option>
+                            </select>
+                        </div>
+                        <button id="updateConfig" class="w-full bg-ars-blue hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors">
+                            <i class="fas fa-save mr-2"></i>Update Configuration
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Panel -->
+        <div class="mt-8">
+            <div class="dark-card rounded-xl shadow-lg card-hover">
+                <div class="p-6 border-b border-gray-600">
+                    <h3 class="text-lg font-semibold text-white flex items-center">
+                        <i class="fas fa-exclamation-triangle mr-3 text-yellow-500"></i>
+                        Recent Alerts
+                    </h3>
+                </div>
+                <div class="p-6">
+                    <div id="alertsList" class="space-y-3 max-h-64 overflow-y-auto">
+                        <div class="text-center text-gray-400 py-8">
+                            <i class="fas fa-bell-slash text-3xl mb-2"></i>
+                            <p>No alerts yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white mt-12">
+        <div class="container mx-auto px-6 py-8">
+            <div class="text-center">
+                <div class="flex items-center justify-center space-x-3 mb-4">
+                    <img src="/static/ars-logo.svg" alt="ARS Logo" class="w-8 h-8 ars-logo">
+                    <span class="text-xl font-bold">DriveGuard AI</span>
+                </div>
+                <p class="text-gray-400">&copy; 2025 ARS Technologies. Advanced driver monitoring system.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // DOM elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const videoFeed = document.getElementById('videoFeed');
+        const noVideoMessage = document.getElementById('noVideoMessage');
+        
+        // Statistics elements
+        const totalFrames = document.getElementById('totalFrames');
+        const drowsinessCount = document.getElementById('drowsinessCount');
+        const attentionCount = document.getElementById('attentionCount');
+        const phoneCount = document.getElementById('phoneCount');
+        const sessionDuration = document.getElementById('sessionDuration');
+        
+        // Configuration elements
+        const eyeArThreshold = document.getElementById('eyeArThreshold');
+        const mouthArThreshold = document.getElementById('mouthArThreshold');
+        const detectionMode = document.getElementById('detectionMode');
+        const updateConfig = document.getElementById('updateConfig');
+        const eyeArValue = document.getElementById('eyeArValue');
+        const mouthArValue = document.getElementById('mouthArValue');
+        
+        // Alerts
+        const alertsList = document.getElementById('alertsList');
+        
+        // State
+        let isRunning = false;
+        let sessionStartTime = null;
+        let statsInterval = null;
+        
+        // Event listeners
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        logoutBtn.addEventListener('click', logout);
+        updateConfig.addEventListener('click', updateConfiguration);
+        
+        // Range input updates
+        eyeArThreshold.addEventListener('input', (e) => {
+            eyeArValue.textContent = e.target.value;
+        });
+        
+        mouthArThreshold.addEventListener('input', (e) => {
+            mouthArValue.textContent = e.target.value;
+        });
+        
+        // Socket.IO event listeners
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+        
+        socket.on('frame_data', (data) => {
+            videoFeed.src = 'data:image/jpeg;base64,' + data.frame;
+            noVideoMessage.style.display = 'none';
+        });
+        
+        socket.on('new_alert', (alert) => {
+            addAlert(alert);
+        });
+        
+        socket.on('status', (data) => {
+            console.log('Status:', data.message);
+        });
+        
+        // Authentication check
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/status');
+                const data = await response.json();
+                if (!data.authenticated) {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                window.location.href = '/login';
+            }
+        }
+
+        // Logout function
+        async function logout() {
+            try {
+                const response = await fetch('/api/logout', { method: 'POST' });
+                if (response.ok) {
+                    localStorage.removeItem('driverguard_token');
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Force redirect even if logout fails
+                localStorage.removeItem('driverguard_token');
+                window.location.href = '/login';
+            }
+        }
+
+        // Functions
+        async function startDetection() {
+            try {
+                const response = await fetch('/api/start', { method: 'POST' });
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    isRunning = true;
+                    sessionStartTime = new Date();
+                    updateUI();
+                    startStatsUpdate();
+                } else {
+                    alert('Failed to start detection');
+                }
+            } catch (error) {
+                console.error('Error starting detection:', error);
+                alert('Error starting detection');
+            }
+        }
+        
+        async function stopDetection() {
+            try {
+                const response = await fetch('/api/stop', { method: 'POST' });
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                isRunning = false;
+                sessionStartTime = null;
+                updateUI();
+                stopStatsUpdate();
+            } catch (error) {
+                console.error('Error stopping detection:', error);
+            }
+        }
+        
+        function updateUI() {
+            if (isRunning) {
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusIndicator.className = 'status-indicator status-running';
+                statusText.textContent = 'Running';
+            } else {
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusIndicator.className = 'status-indicator status-stopped';
+                statusText.textContent = 'Stopped';
+                noVideoMessage.style.display = 'flex';
+            }
+        }
+        
+        function startStatsUpdate() {
+            statsInterval = setInterval(updateStats, 1000);
+        }
+        
+        function stopStatsUpdate() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+        }
+        
+        async function updateStats() {
+            try {
+                const response = await fetch('/api/stats');
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const stats = await response.json();
+                
+                const totalFramesCount = stats.total_frames || 0;
+                const drowsinessCountValue = stats.drowsiness_detected || 0;
+                const attentionCountValue = stats.attention_lost || 0;
+                const phoneCountValue = stats.phone_usage || 0;
+                
+                // Update counts
+                totalFrames.textContent = totalFramesCount;
+                drowsinessCount.textContent = drowsinessCountValue;
+                attentionCount.textContent = attentionCountValue;
+                phoneCount.textContent = phoneCountValue;
+                
+                // Calculate percentages
+                const drowsinessPercent = totalFramesCount > 0 ? Math.round((drowsinessCountValue / totalFramesCount) * 100) : 0;
+                const attentionPercent = totalFramesCount > 0 ? Math.round((attentionCountValue / totalFramesCount) * 100) : 0;
+                const phonePercent = totalFramesCount > 0 ? Math.round((phoneCountValue / totalFramesCount) * 100) : 0;
+                
+                // Update percentage displays
+                document.getElementById('drowsinessPercent').textContent = drowsinessPercent + '%';
+                document.getElementById('attentionPercent').textContent = attentionPercent + '%';
+                document.getElementById('phonePercent').textContent = phonePercent + '%';
+                
+                // Update circular progress bars
+                updateCircularProgress('drowsinessCircle', drowsinessPercent);
+                updateCircularProgress('attentionCircle', attentionPercent);
+                updateCircularProgress('phoneCircle', phonePercent);
+                
+                if (sessionStartTime) {
+                    const duration = new Date() - sessionStartTime;
+                    const hours = Math.floor(duration / 3600000);
+                    const minutes = Math.floor((duration % 3600000) / 60000);
+                    const seconds = Math.floor((duration % 60000) / 1000);
+                    sessionDuration.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+        
+        function updateCircularProgress(circleId, percentage) {
+            const circle = document.getElementById(circleId);
+            const circumference = 2 * Math.PI * 15.9155; // radius = 15.9155
+            const offset = circumference - (percentage / 100) * circumference;
+            circle.style.strokeDasharray = `${circumference} ${circumference}`;
+            circle.style.strokeDashoffset = offset;
+        }
+        
+        async function updateConfiguration() {
+            const config = {
+                eye_ar_threshold: parseFloat(eyeArThreshold.value),
+                mouth_ar_threshold: parseFloat(mouthArThreshold.value),
+                detection_mode: detectionMode.value
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('Configuration updated successfully');
+                } else {
+                    alert('Failed to update configuration');
+                }
+            } catch (error) {
+                console.error('Error updating configuration:', error);
+                alert('Error updating configuration');
+            }
+        }
+        
+        function addAlert(alert) {
+            const alertElement = document.createElement('div');
+            alertElement.className = `p-3 rounded-lg border-l-4 ${alert.severity === 'HIGH' ? 'alert-high' : 'alert-medium'}`;
+            
+            alertElement.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-semibold text-white">${alert.type}</span>
+                        <p class="text-sm text-gray-200">${alert.message}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-300">${alert.timestamp}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Remove "no alerts" message if it exists
+            const noAlerts = alertsList.querySelector('.text-center');
+            if (noAlerts) {
+                noAlerts.remove();
+            }
+            
+            // Add new alert at the top
+            alertsList.insertBefore(alertElement, alertsList.firstChild);
+            
+            // Keep only last 10 alerts visible
+            const alerts = alertsList.querySelectorAll('.p-3');
+            if (alerts.length > 10) {
+                alerts[alerts.length - 1].remove();
+            }
+        }
+        
+        // Initialize UI
+        checkAuth();
+        updateUI();
+    </script>
+</body>
+</html>

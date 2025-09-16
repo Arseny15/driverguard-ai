@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriverGuard AI - Secure Driver Behavior Monitoring</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%);
+        }
+        .security-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .dark-blue-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+        }
+        .alert-high {
+            border-left: 4px solid #ef4444;
+        }
+        .alert-medium {
+            border-left: 4px solid #f59e0b;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-running {
+            background-color: #10b981;
+            animation: pulse 2s infinite;
+        }
+        .status-stopped {
+            background-color: #ef4444;
+        }
+        .status-secure {
+            background-color: #3b82f6;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .login-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        }
+        .security-badge {
+            background: linear-gradient(45deg, #10b981, #059669);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .ars-logo {
+            font-family: 'Arial', sans-serif;
+            font-weight: bold;
+            background: linear-gradient(45deg, #3b82f6, #1d4ed8, #1e40af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .chart-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .progress-bar {
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            transition: width 0.5s ease;
+        }
+        .circular-progress {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+        .circular-progress svg {
+            transform: rotate(-90deg);
+        }
+        .circular-progress .progress-ring {
+            fill: none;
+            stroke: #3b82f6;
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+        .circular-progress .progress-ring-fill {
+            fill: none;
+            stroke: #10b981;
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 283;
+            stroke-dashoffset: 283;
+            transition: stroke-dashoffset 0.5s ease;
+        }
+        .circular-progress .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-96">
+            <div class="text-center mb-6">
+                <i class="fas fa-shield-alt text-4xl text-blue-600 mb-4"></i>
+                <h2 class="text-2xl font-bold text-gray-800">Secure Access</h2>
+                <p class="text-gray-600">Enter password to access DriverGuard AI</p>
+            </div>
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <input type="password" id="password" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg transition-colors">
+                    <i class="fas fa-lock mr-2"></i>Access Secure System
+                </button>
+            </form>
+            <div class="mt-4 text-center">
+                <p class="text-sm text-gray-500">Default password: driverguard2025</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application (Hidden until authenticated) -->
+    <div id="mainApp" class="hidden">
+        <!-- Header -->
+        <header class="security-bg text-white shadow-lg">
+            <div class="container mx-auto px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-shield-alt text-3xl"></i>
+                        <div>
+                            <h1 class="text-2xl font-bold">DriverGuard AI</h1>
+                            <span class="security-badge">SECURE MODE</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center">
+                            <span class="status-indicator status-secure"></span>
+                            <span id="statusText">Secure</span>
+                        </div>
+                        <button id="startBtn" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-play mr-2"></i>Start
+                        </button>
+                        <button id="stopBtn" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors" disabled>
+                            <i class="fas fa-stop mr-2"></i>Stop
+                        </button>
+                        <button id="logoutBtn" class="bg-gray-500 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-6 py-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Video Feed -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-xl shadow-lg card-hover">
+                        <div class="p-6 border-b border-gray-200">
+                            <h2 class="text-xl font-semibold text-gray-800 flex items-center">
+                                <i class="fas fa-video mr-3 text-blue-500"></i>
+                                Secure Video Feed
+                                <span class="security-badge ml-2">ENCRYPTED</span>
+                            </h2>
+                        </div>
+                        <div class="p-6">
+                            <div class="relative bg-gray-900 rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
+                                <img id="videoFeed" src="" alt="Video Feed" class="w-full h-full object-cover">
+                                <div id="noVideoMessage" class="absolute inset-0 flex items-center justify-center text-white">
+                                    <div class="text-center">
+                                        <i class="fas fa-video-slash text-6xl mb-4 opacity-50"></i>
+                                        <p class="text-xl">No video feed available</p>
+                                        <p class="text-sm opacity-75">Click Start to begin secure monitoring</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Panel -->
+                <div class="space-y-6">
+                    <!-- Stats Cards -->
+                    <div class="bg-white rounded-xl shadow-lg card-hover">
+                        <div class="p-6 border-b border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                                <i class="fas fa-chart-bar mr-3 text-green-500"></i>
+                                Statistics
+                                <span class="security-badge ml-2">ANONYMIZED</span>
+                            </h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Total Frames</span>
+                                <span id="totalFrames" class="font-bold text-blue-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Drowsiness Detected</span>
+                                <span id="drowsinessCount" class="font-bold text-red-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Attention Lost</span>
+                                <span id="attentionCount" class="font-bold text-orange-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Phone Usage</span>
+                                <span id="phoneCount" class="font-bold text-purple-600">0</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Session Duration</span>
+                                <span id="sessionDuration" class="font-bold text-gray-600">00:00:00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Status -->
+                    <div class="bg-white rounded-xl shadow-lg card-hover">
+                        <div class="p-6 border-b border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                                <i class="fas fa-shield-alt mr-3 text-blue-500"></i>
+                                Security Status
+                            </h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Encryption</span>
+                                <span class="text-green-600 font-bold">✓ Active</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Privacy Mode</span>
+                                <span class="text-green-600 font-bold">✓ Enabled</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Data Anonymization</span>
+                                <span class="text-green-600 font-bold">✓ Active</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Audit Logging</span>
+                                <span class="text-green-600 font-bold">✓ Active</span>
+                            </div>
+                            <button id="cleanupBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors">
+                                <i class="fas fa-broom mr-2"></i>Cleanup Old Data
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Configuration Panel -->
+                    <div class="bg-white rounded-xl shadow-lg card-hover">
+                        <div class="p-6 border-b border-gray-200">
+                            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                                <i class="fas fa-cog mr-3 text-blue-500"></i>
+                                Configuration
+                            </h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Eye AR Threshold</label>
+                                <input type="range" id="eyeArThreshold" min="0.1" max="0.5" step="0.01" value="0.33" 
+                                       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>0.1</span>
+                                    <span id="eyeArValue">0.33</span>
+                                    <span>0.5</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Mouth AR Threshold</label>
+                                <input type="range" id="mouthArThreshold" min="0.3" max="1.0" step="0.01" value="0.7" 
+                                       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>0.3</span>
+                                    <span id="mouthArValue">0.7</span>
+                                    <span>1.0</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Detection Mode</label>
+                                <select id="detectionMode" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <option value="basic">Basic Detection</option>
+                                    <option value="advanced">Advanced Detection</option>
+                                    <option value="privacy">Privacy Mode</option>
+                                </select>
+                            </div>
+                            <button id="updateConfig" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors">
+                                <i class="fas fa-save mr-2"></i>Update Configuration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Panel -->
+            <div class="mt-8">
+                <div class="bg-white rounded-xl shadow-lg card-hover">
+                    <div class="p-6 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                            <i class="fas fa-exclamation-triangle mr-3 text-yellow-500"></i>
+                            Recent Alerts
+                            <span class="security-badge ml-2">SECURE</span>
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div id="alertsList" class="space-y-3 max-h-64 overflow-y-auto">
+                            <div class="text-center text-gray-500 py-8">
+                                <i class="fas fa-bell-slash text-3xl mb-2"></i>
+                                <p>No alerts yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-gray-800 text-white mt-12">
+            <div class="container mx-auto px-6 py-8">
+                <div class="text-center">
+                    <p>&copy; 2024 DriverGuard AI. Secure driver behavior monitoring system.</p>
+                    <p class="text-sm text-gray-400 mt-2">All data is encrypted and stored locally. No external tracking.</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Global variables
+        let authToken = null;
+        let socket = null;
+        let isRunning = false;
+        let sessionStartTime = null;
+        let statsInterval = null;
+        
+        // DOM elements
+        const loginModal = document.getElementById('loginModal');
+        const mainApp = document.getElementById('mainApp');
+        const loginForm = document.getElementById('loginForm');
+        const passwordInput = document.getElementById('password');
+        const logoutBtn = document.getElementById('logoutBtn');
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if already authenticated
+            const savedToken = localStorage.getItem('driverguard_token');
+            if (savedToken) {
+                authToken = savedToken;
+                showMainApp();
+            }
+        });
+        
+        // Login form submission
+        loginForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const password = passwordInput.value;
+            
+            try {
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password: password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    authToken = data.token;
+                    localStorage.setItem('driverguard_token', authToken);
+                    showMainApp();
+                } else {
+                    alert('Invalid password. Please try again.');
+                    passwordInput.value = '';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed. Please try again.');
+            }
+        });
+        
+        // Logout
+        logoutBtn.addEventListener('click', function() {
+            authToken = null;
+            localStorage.removeItem('driverguard_token');
+            showLoginModal();
+        });
+        
+        function showMainApp() {
+            loginModal.classList.add('hidden');
+            mainApp.classList.remove('hidden');
+            initializeApp();
+        }
+        
+        function showLoginModal() {
+            loginModal.classList.remove('hidden');
+            mainApp.classList.add('hidden');
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        function initializeApp() {
+            // Initialize Socket.IO connection
+            socket = io();
+            
+            // Initialize other components
+            initializeEventListeners();
+            initializeSocketEvents();
+        }
+        
+        function initializeEventListeners() {
+            // Get DOM elements
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const statusText = document.getElementById('statusText');
+            const videoFeed = document.getElementById('videoFeed');
+            const noVideoMessage = document.getElementById('noVideoMessage');
+            
+            // Statistics elements
+            const totalFrames = document.getElementById('totalFrames');
+            const drowsinessCount = document.getElementById('drowsinessCount');
+            const attentionCount = document.getElementById('attentionCount');
+            const phoneCount = document.getElementById('phoneCount');
+            const sessionDuration = document.getElementById('sessionDuration');
+            
+            // Configuration elements
+            const eyeArThreshold = document.getElementById('eyeArThreshold');
+            const mouthArThreshold = document.getElementById('mouthArThreshold');
+            const detectionMode = document.getElementById('detectionMode');
+            const updateConfig = document.getElementById('updateConfig');
+            const eyeArValue = document.getElementById('eyeArValue');
+            const mouthArValue = document.getElementById('mouthArValue');
+            const cleanupBtn = document.getElementById('cleanupBtn');
+            
+            // Alerts
+            const alertsList = document.getElementById('alertsList');
+            
+            // Event listeners
+            startBtn.addEventListener('click', startDetection);
+            stopBtn.addEventListener('click', stopDetection);
+            updateConfig.addEventListener('click', updateConfiguration);
+            cleanupBtn.addEventListener('click', cleanupData);
+            
+            // Range input updates
+            eyeArThreshold.addEventListener('input', (e) => {
+                eyeArValue.textContent = e.target.value;
+            });
+            
+            mouthArThreshold.addEventListener('input', (e) => {
+                mouthArValue.textContent = e.target.value;
+            });
+        }
+        
+        function initializeSocketEvents() {
+            socket.on('connect', () => {
+                console.log('Connected to secure server');
+            });
+            
+            socket.on('frame_data', (data) => {
+                if (data.encrypted) {
+                    console.log('Received encrypted frame data');
+                }
+                videoFeed.src = 'data:image/jpeg;base64,' + data.frame;
+                noVideoMessage.style.display = 'none';
+            });
+            
+            socket.on('new_alert', (alert) => {
+                addAlert(alert);
+            });
+            
+            socket.on('status', (data) => {
+                console.log('Status:', data.message);
+            });
+        }
+        
+        // API functions with authentication
+        async function makeAuthenticatedRequest(url, options = {}) {
+            const headers = {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            return fetch(url, {
+                ...options,
+                headers
+            });
+        }
+        
+        async function startDetection() {
+            try {
+                const response = await makeAuthenticatedRequest('/api/start', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    isRunning = true;
+                    sessionStartTime = new Date();
+                    updateUI();
+                    startStatsUpdate();
+                } else {
+                    alert('Failed to start detection');
+                }
+            } catch (error) {
+                console.error('Error starting detection:', error);
+                alert('Error starting detection');
+            }
+        }
+        
+        async function stopDetection() {
+            try {
+                await makeAuthenticatedRequest('/api/stop', { method: 'POST' });
+                isRunning = false;
+                sessionStartTime = null;
+                updateUI();
+                stopStatsUpdate();
+            } catch (error) {
+                console.error('Error stopping detection:', error);
+            }
+        }
+        
+        function updateUI() {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const statusText = document.getElementById('statusText');
+            const noVideoMessage = document.getElementById('noVideoMessage');
+            
+            if (isRunning) {
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusText.textContent = 'Running';
+            } else {
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusText.textContent = 'Secure';
+                noVideoMessage.style.display = 'flex';
+            }
+        }
+        
+        function startStatsUpdate() {
+            statsInterval = setInterval(updateStats, 1000);
+        }
+        
+        function stopStatsUpdate() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+        }
+        
+        async function updateStats() {
+            try {
+                const response = await makeAuthenticatedRequest('/api/stats');
+                const stats = await response.json();
+                
+                document.getElementById('totalFrames').textContent = stats.total_frames || 0;
+                document.getElementById('drowsinessCount').textContent = stats.drowsiness_detected || 0;
+                document.getElementById('attentionCount').textContent = stats.attention_lost || 0;
+                document.getElementById('phoneCount').textContent = stats.phone_usage || 0;
+                
+                if (sessionStartTime) {
+                    const duration = new Date() - sessionStartTime;
+                    const hours = Math.floor(duration / 3600000);
+                    const minutes = Math.floor((duration % 3600000) / 60000);
+                    const seconds = Math.floor((duration % 60000) / 1000);
+                    document.getElementById('sessionDuration').textContent = 
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+        
+        async function updateConfiguration() {
+            const config = {
+                eye_ar_threshold: parseFloat(document.getElementById('eyeArThreshold').value),
+                mouth_ar_threshold: parseFloat(document.getElementById('mouthArThreshold').value),
+                detection_mode: document.getElementById('detectionMode').value
+            };
+            
+            try {
+                const response = await makeAuthenticatedRequest('/api/config', {
+                    method: 'POST',
+                    body: JSON.stringify(config)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('Configuration updated successfully');
+                } else {
+                    alert('Failed to update configuration');
+                }
+            } catch (error) {
+                console.error('Error updating configuration:', error);
+                alert('Error updating configuration');
+            }
+        }
+        
+        async function cleanupData() {
+            try {
+                const response = await makeAuthenticatedRequest('/api/cleanup', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    alert(`Cleaned up ${data.cleaned_count} old data entries`);
+                } else {
+                    alert('Failed to cleanup data');
+                }
+            } catch (error) {
+                console.error('Error cleaning up data:', error);
+                alert('Error cleaning up data');
+            }
+        }
+        
+        function addAlert(alert) {
+            const alertElement = document.createElement('div');
+            alertElement.className = `p-3 rounded-lg border-l-4 ${alert.severity === 'HIGH' ? 'alert-high bg-red-50' : 'alert-medium bg-yellow-50'}`;
+            
+            alertElement.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-semibold text-gray-800">${alert.type}</span>
+                        <p class="text-sm text-gray-600">${alert.message}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-500">${alert.timestamp}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Remove "no alerts" message if it exists
+            const noAlerts = document.getElementById('alertsList').querySelector('.text-center');
+            if (noAlerts) {
+                noAlerts.remove();
+            }
+            
+            // Add new alert at the top
+            document.getElementById('alertsList').insertBefore(alertElement, document.getElementById('alertsList').firstChild);
+            
+            // Keep only last 10 alerts visible
+            const alerts = document.getElementById('alertsList').querySelectorAll('.p-3');
+            if (alerts.length > 10) {
+                alerts[alerts.length - 1].remove();
+            }
+        }
+        
+        // Initialize UI
+        updateUI();
+    </script>
+</body>
+</html>
